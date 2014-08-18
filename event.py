@@ -1,3 +1,4 @@
+#!/usr/bin/python2
 from calendar import day_name, month_name
 import re
 from datetime import datetime, timedelta, time
@@ -154,28 +155,40 @@ def align(dates, times):
 
     for t in times:
         d = min(dates, key=k)
-        matched.append(d[0])
-        r.append(datetime.combine(d[0], t[0]))
+        matched.append(d)
+        r.append((datetime.combine(d[0], t[0]), t[1]))
 
-    unmatched = [d[0] for d in dates if d[0] not in matched]
+    unmatched = [d for d in dates if d not in matched]
     return r, unmatched
 
 
 def parse_text(text, ref=None):
     text, dates = parse_dates(text, ref)
     text, times = parse_times(text)
-    m, u = align(dates, times)
-    print "\n".join(d.isoformat() for d in m)
+    return align(dates, times)
 
 
 def parse_email(fp):
     mail = email.message_from_file(fp)
     values = parsedate(mail["date"])
+    subject = mail["subject"]
     date = datetime(*values[:6]).date()
     text = clean(mail.get_payload())
-    parse_text(text, ref=date)
+    m, u = parse_text(text, ref=date)
+    m.sort(key=lambda d: d[1][0])
+    if len(m) >= 2:
+        return subject, m[0][0], m[1][0]
+    elif len(m) == 1:
+        return subject, m[0][0], m[0][0] + timedelta(hours=1)
+    else:
+        return subject, date, date + timedelta(hours=1)
+
+def edit(subject, begin, end):
+    pass
 
 
 if __name__ == "__main__":
-    parse_email(sys.stdin)
+    subject, begin, end = parse_email(sys.stdin)
+
+    print begin.isoformat(), end.isoformat(), subject
     a = raw_input()
