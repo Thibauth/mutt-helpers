@@ -6,6 +6,10 @@ import sys
 import email
 from email.utils import parsedate
 from itertools import takewhile, dropwhile
+from tempfile import mkstemp
+import os
+from subprocess import check_call
+from icalendar import Calendar, Event
 
 days = [day.lower() for day in day_name]
 days_abbr = [day.lower()[:3] for day in day_name]
@@ -162,19 +166,15 @@ def align(dates, times):
     return r, unmatched
 
 
-def parse_text(text, ref=None):
-    text, dates = parse_dates(text, ref)
-    text, times = parse_times(text)
-    return align(dates, times)
-
-
 def parse_email(fp):
     mail = email.message_from_file(fp)
     values = parsedate(mail["date"])
     subject = mail["subject"]
     date = datetime(*values[:6]).date()
     text = clean(mail.get_payload())
-    m, u = parse_text(text, ref=date)
+    text, dates = parse_dates(text, date)
+    text, times = parse_times(text)
+    m, u = align(dates, times)
     m.sort(key=lambda d: d[1][0])
     if len(m) >= 2:
         return subject, m[0][0], m[1][0]
@@ -183,12 +183,30 @@ def parse_email(fp):
     else:
         return subject, date, date + timedelta(hours=1)
 
-def edit(subject, begin, end):
-    pass
 
+def edit(subject, begin, end):
+    d = {"Summary": subject, "Start": begin.isoformat(),
+         "End": end.isoformat()}
+    fd, fname = mkstemp()
+    with open(fname, "w") as fo:
+        fo.write("\n".join(": ".join(e) for e in d.iteritems()))
+    editor = os.getenv("EDITOR") or "gvim"
+    check_call([editor, "-f", fname])
+    return fname
+
+
+def gen_icalendar(file_name):
+    d = {key.strip(): value.strip() for key, value in
+         (line.split(": ", 1) for line in open(file_name))}
+    cal = Calendar()
+    event = Event()
+    event.add("summary", d["Summary"])
+    event.add("dtstart", datetime.strptime(d["Start"], "%Y-%m-%dT%H:%M:%S"))
+    event.add("dtend", datetime.strptime(d["End"], "%Y-%m-%dT%H:%M:%S"))
+    cal.add_component(event)
+    open(file_name, "w").write(cal.to_ical())
+    print file_name
 
 if __name__ == "__main__":
-    subject, begin, end = parse_email(sys.stdin)
-
-    print begin.isoformat(), end.isoformat(), subject
+    gen_icalendar(edit(*parse_email(sys.stdin)))
     a = raw_input()
